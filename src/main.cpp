@@ -7,76 +7,115 @@ extern "C"
 #include <lualib.h>
 }
 
+#include <mutex>
+#include <thread>
 #include <iostream>
 
-const char* engine_id = "luaL_engine";
+fixtk::engine engine;
+std::thread engine_thread;
+std::mutex lua_mutex;
 
-engine* l_check_engine( lua_State* l, int n )
+void engine_thread_fn()
 {
-    return *(engine**)luaL_checkudata( l, n, engine_id );
+    std::cout << "enter engine_thread_fn" << std::endl;
+    engine.start();
+    std::cout << "exit engine_thread_fn" << std::endl;
 }
 
-int l_new_engine( lua_State* l )
+void push_fix( lua_State* l, fixtk::field_vector& flds )
 {
-    engine** udata = (engine**)lua_newuserdata( l, sizeof( engine* ) );
-    *udata = new engine();
-    luaL_getmetatable( l, engine_id );
-    lua_setmetatable( l, -2 );
-    return 1;
+    lua_newtable( l );
+    for( int i=0; i<flds.size(); i++ )
+    {
+        fixtk::value& val = flds[i].value_;
+        lua_pushinteger( l, flds[i].tag_ );
+        lua_pushlstring( l, val.c_str(), val.size() );
+        lua_settable( l, -3 );
+    }
 }
 
-int l_del_engine( lua_State* l )
+void pop_fix( lua_State* l, fixtk::field_vector& flds )
 {
-    delete l_check_engine( l, -1 );
-    return 0;
+    lua_pushnil( l );
+    while( lua_next( l, -2 ) != 0 )
+    {
+        flds.push_back( fixtk::field( lua_tointeger( l, -2 ), lua_tostring( l, -1 ) ) );
+        lua_pop( l, 1 );
+    }
 }
 
-int l_engine_acceptor( lua_State* l )
+int l_fix_acceptor( lua_State* l )
 {
-    engine* engine = l_check_engine( l, 1 );
-    const char* conn = luaL_checkstring( l, 2 );
+    std::lock_guard< std::mutex > lock( lua_mutex );
+
+    const char* conn = luaL_checkstring( l, 1 );
     int handler = luaL_ref( l, LUA_REGISTRYINDEX );
 
-    engine->acceptor( "", [=]( session_id id, const std::string& message ) {
+    engine.acceptor( "", [=]( fixtk::session_id id, const std::string& message ) {
+        std::lock_guard< std::mutex > lock( lua_mutex );
         lua_rawgeti( l, LUA_REGISTRYINDEX, handler );
         lua_pushnumber( l, id );
         lua_pushstring( l, message.c_str() );
         lua_pcall( l, 2, 0, 0 );
     } );
 
+    if( !engine_thread.joinable() ) {
+        engine_thread = std::thread( engine_thread_fn );
+    }
+
     return 0;
 }
 
-int l_engine_send( lua_State* l )
+int l_fix_initiator( lua_State* l )
 {
-    engine* engine = l_check_engine( l, 1 );
-    int sess = luaL_checknumber( l, 2 );
-    const char* message = luaL_checkstring( l, 3 );
-    engine->send( sess, message );
+    std::lock_guard< std::mutex > lock( lua_mutex );
+
+    const char* conn = luaL_checkstring( l, 1 );
+    int handler = luaL_ref( l, LUA_REGISTRYINDEX );
+
+    fixtk::session_id id = engine.initiator( "", [=]( fixtk::session_id id, const std::string& message ) {
+        ;
+    } );
+
+    if( !engine_thread.joinable() ) {
+        engine_thread = std::thread( engine_thread_fn );
+    }
+
+    lua_pushinteger( l, id );
+
+    return 1;
+}
+
+int l_fix_send( lua_State* l )
+{
+    std::lock_guard< std::mutex > lock( lua_mutex );
+
+    int session = luaL_checknumber( l, 1 );
+    fixtk::field_vector flds;
+    pop_fix( l, flds );
+    engine.send( session, flds );
     return 0;
 }
 
-int l_engine_start( lua_State* l )
+int l_fix_recv( lua_State* l )
 {
-    l_check_engine( l, 1 )->start();
+    std::lock_guard< std::mutex > lock( lua_mutex );
     return 0;
 }
 
 void l_register( lua_State* l )
 {
-    luaL_Reg engine_reg[] = {
-        { "engine", l_new_engine },
-        { "acceptor", l_engine_acceptor },
-        { "send", l_engine_send },
-        { "start", l_engine_start },
-        { "__gc", l_del_engine },
+    luaL_Reg fix_reg[] = {
+        { "acceptor", l_fix_acceptor },
+        { "initiator", l_fix_initiator },
+        { "send", l_fix_send },
+        { "recv", l_fix_recv },
         { NULL, NULL }
     };
 
-    luaL_newmetatable( l, engine_id );
-    luaL_setfuncs( l, engine_reg, 0 );
+    luaL_newmetatable( l, "fix" );
+    luaL_setfuncs( l, fix_reg, 0 );
     lua_pushvalue( l, -1 );
-    lua_setfield( l, -1, "__index" );
     lua_setglobal( l, "fix" );
 }
 
@@ -88,7 +127,11 @@ int main( int argc, char** argv )
 
     int err = luaL_dofile( l, argv[1] );
     if( err ) {
-        std::cerr << "lua error: " << luaL_checkstring( l, -1 ) << std::endl;
+        std::cerr << "lua error: " << luaL_checkstring( l, -1 ) << std::endl; return 1;
+    }
+
+    if( engine_thread.joinable() ) {
+        engine_thread.join();
     }
 
     lua_close( l );
