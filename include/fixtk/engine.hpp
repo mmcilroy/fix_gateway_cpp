@@ -14,6 +14,10 @@ class session;
 class engine
 {
 public:
+    engine();
+
+    ~engine();
+
     template< typename H >
     void acceptor( const std::string& conn, H handler );
 

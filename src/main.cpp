@@ -37,7 +37,7 @@ int l_engine_acceptor( lua_State* l )
     const char* conn = luaL_checkstring( l, 2 );
     int handler = luaL_ref( l, LUA_REGISTRYINDEX );
 
-    engine->acceptor( "", [&]( session_id id, const std::string& message ) {
+    engine->acceptor( "", [=]( session_id id, const std::string& message ) {
         lua_rawgeti( l, LUA_REGISTRYINDEX, handler );
         lua_pushnumber( l, id );
         lua_pushstring( l, message.c_str() );
