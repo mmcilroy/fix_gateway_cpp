@@ -11,19 +11,24 @@ extern "C"
 #include <thread>
 #include <iostream>
 
-fixtk::engine engine;
 std::thread engine_thread;
-std::mutex lua_mutex;
+std::recursive_mutex lua_mutex;
+
+fixtk::engine engine;
 
 void engine_thread_fn()
 {
-    std::cout << "enter engine_thread_fn" << std::endl;
     engine.start();
-    std::cout << "exit engine_thread_fn" << std::endl;
 }
 
-void push_fix( lua_State* l, fixtk::field_vector& flds )
+void push_fix( lua_State* l, const std::string& message )
 {
+    fixtk::field_vector flds;
+    fixtk::parse( message, [&]( fixtk::tag t, const fixtk::value& v ) {
+        std::cout << "parsed " << t << "=" << v << std::endl;
+        flds.push_back( fixtk::field( t, v ) );
+    } );
+
     lua_newtable( l );
     for( int i=0; i<flds.size(); i++ )
     {
@@ -46,16 +51,17 @@ void pop_fix( lua_State* l, fixtk::field_vector& flds )
 
 int l_fix_acceptor( lua_State* l )
 {
-    std::lock_guard< std::mutex > lock( lua_mutex );
+    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
 
     const char* conn = luaL_checkstring( l, 1 );
     int handler = luaL_ref( l, LUA_REGISTRYINDEX );
 
-    engine.acceptor( "", [=]( fixtk::session_id id, const std::string& message ) {
-        std::lock_guard< std::mutex > lock( lua_mutex );
+    engine.acceptor( conn, [=]( fixtk::session_id id, const std::string& message ) {
+        std::lock_guard< std::recursive_mutex > lock( lua_mutex );
+        std::cout << "received " << message << std::endl;
         lua_rawgeti( l, LUA_REGISTRYINDEX, handler );
         lua_pushnumber( l, id );
-        lua_pushstring( l, message.c_str() );
+        push_fix( l, message );
         lua_pcall( l, 2, 0, 0 );
     } );
 
@@ -68,13 +74,16 @@ int l_fix_acceptor( lua_State* l )
 
 int l_fix_initiator( lua_State* l )
 {
-    std::lock_guard< std::mutex > lock( lua_mutex );
+    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
 
     const char* conn = luaL_checkstring( l, 1 );
     int handler = luaL_ref( l, LUA_REGISTRYINDEX );
 
-    fixtk::session_id id = engine.initiator( "", [=]( fixtk::session_id id, const std::string& message ) {
-        ;
+    fixtk::session_id id = engine.initiator( conn, [=]( fixtk::session_id id, const std::string& message ) {
+        std::cout << "received " << message << std::endl;
+        fixtk::parse( message, [&]( fixtk::tag t, const fixtk::value& v ) {
+            std::cout << "parsed " << t << "=" << v << std::endl;
+        } );
     } );
 
     if( !engine_thread.joinable() ) {
@@ -88,18 +97,19 @@ int l_fix_initiator( lua_State* l )
 
 int l_fix_send( lua_State* l )
 {
-    std::lock_guard< std::mutex > lock( lua_mutex );
+    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
 
     int session = luaL_checknumber( l, 1 );
+    const char* type = luaL_checkstring( l, 2 );
     fixtk::field_vector flds;
     pop_fix( l, flds );
-    engine.send( session, flds );
+    engine.send( session, type, flds );
     return 0;
 }
 
 int l_fix_recv( lua_State* l )
 {
-    std::lock_guard< std::mutex > lock( lua_mutex );
+    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
     return 0;
 }
 

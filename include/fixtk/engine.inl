@@ -6,6 +6,7 @@
 #define MSG_SEQ_NUM 34
 #define SENDING_TIME 52
 #define SENDER_COMP_ID 49
+#define SENDER_SUB_ID 50
 #define TARGET_COMP_ID 56
 #define DELIM (char)1
 
@@ -65,6 +66,8 @@ void encode( message& out, const header& hdr, const field_vector& flds )
 
 
 // ----------------------------------------------------------------------------
+const size_t buffer_size = 1024;
+
 class session
 {
 public:
@@ -83,9 +86,10 @@ public:
     tcp::socket socket_;
 
     session_id id_;
+    header hdr_;
+    decoder decoder_;
 
-    enum { max_length = 1024 };
-    char data_[max_length];
+    char buf_[ buffer_size ];
 };
 
 
@@ -108,7 +112,7 @@ void session::read( H handler )
 {
     std::cout << this << " session.read" << std::endl;
     socket_.async_read_some(
-        boost::asio::buffer( data_, max_length ),
+        boost::asio::buffer( buf_, buffer_size ),
         boost::bind(
             &session::handle_read< H >,
             this,
@@ -123,8 +127,18 @@ void session::handle_read( H handler, const boost::system::error_code& err, size
     std::cout << this << " session.handle_read: " << err.message() << ", " << bytes_transferred << std::endl;
     if( !err )
     {
-        data_[ bytes_transferred ] = 0;
-        handler( 1, data_ );
+        decoder_.decode( buf_, bytes_transferred, [&]( const std::string& msg ) {
+            parse( msg, [&]( tag t, const value& v ) {
+                if( t == 8 ) {
+                    hdr_.protocol_ = v;
+                } else if( t == 49 ) {
+                    hdr_.target_ = v;
+                } else if( t == 56 ) {
+                    hdr_.sender_ = v;
+                }
+            } );
+            handler( id_, msg );
+        } );
         read( handler );
     }
     else
@@ -143,6 +157,17 @@ void session::send( const message& msg )
 
 
 // ----------------------------------------------------------------------------
+void parse_conn( const std::string& conn, std::string& host, std::string& port )
+{
+    std::vector< std::string > strs;
+    boost::split( strs, conn, boost::is_any_of( ":" ) );
+    if( strs.size() == 2 ) {
+        host = strs[0]; port = strs[1];
+    } else {
+        std::cerr << "invalid tcp connection - " << conn << std::endl;
+    }
+}
+
 engine::engine()
 {
     std::cout << this << " new engine" << std::endl;
@@ -157,7 +182,11 @@ template< typename H >
 void engine::acceptor( const std::string& conn, H handler )
 {
     std::cout << this << " engine.acceptor: " << conn << std::endl;
-    start_accept( new tcp::acceptor( io_, tcp::endpoint( tcp::v4(), 14002 ) ), handler );
+
+    std::string host;
+    std::string port;
+    parse_conn( conn, host, port );
+    start_accept( new tcp::acceptor( io_, tcp::endpoint( tcp::v4(), boost::lexical_cast< int >( port ) ) ), handler );
 }
 
 template< typename H >
@@ -165,39 +194,55 @@ session_id engine::initiator( const std::string& conn, H handler )
 {
     std::cout << this << " engine.initiator: " << conn << std::endl;
 
+    std::string host;
+    std::string port;
+    parse_conn( conn, host, port );
+
     tcp::resolver resolver( io_ );
-    tcp::resolver::query query( tcp::v4(), "ln3-lgma01c", "9107" );
+    tcp::resolver::query query( tcp::v4(), host, port );
     tcp::resolver::iterator it = resolver.resolve( query );
     session* sess = new session( *this, io_ );
     sessions_[ sess->id_ ] = sess;
     boost::asio::connect( sess->socket_, it );
-    sess->read( handler );
-    return sess->id_;
-}
 
-void engine::send( session_id id, const fixtk::field_vector& flds )
-{
-    std::cout << this << " engine.send: " << id << ", " << flds << std::endl;
-
-    header hdr;
-    hdr.type_ = "D";
+    header& hdr = sess->hdr_;
     hdr.protocol_ = "FIX.4.4";
     hdr.sender_ = "S";
     hdr.target_ = "T";
-    hdr.sequence_ = 1;
+    sess->read( handler );
 
-    message msg;
-    encode( msg, hdr, flds );
+    return sess->id_;
+}
 
-    io_.dispatch( [ this, id, msg ]()
+void engine::send( session_id id, const value& type, const field_vector& flds )
+{
+    std::cout << this << " engine.send: " << id << ", " << flds << std::endl;
+
+    auto it = sessions_.find( id );
+    if( it != sessions_.end() )
     {
-        auto it = sessions_.find( id );
-        if( it != sessions_.end() ) {
-            it->second->send( msg );
-        } else {
-            std::cerr << "unknown session_id " << id << std::endl;
-        }
-    } );
+        message msg;
+        header& hdr = it->second->hdr_;
+        hdr.type_ = type;
+        hdr.sequence_++;
+        encode( msg, hdr, flds );
+
+        std::cout << "encoded " << msg << std::endl;
+
+        io_.dispatch( [ this, id, msg ]()
+        {
+            auto it = sessions_.find( id );
+            if( it != sessions_.end() ) {
+                it->second->send( msg );
+            } else {
+                std::cerr << "unknown session_id " << id << std::endl;
+            }
+        } );
+    }
+    else
+    {
+        std::cerr << "unknown session_id " << id << std::endl;
+    }
 }
 
 void engine::start()

@@ -43,7 +43,7 @@ struct header
     std::string protocol_;
     std::string sender_;
     std::string target_;
-    int sequence_;
+    int sequence_ = 0;
 };
 
 typedef std::vector< field > field_vector;

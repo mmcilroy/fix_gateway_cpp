@@ -1,9 +1,11 @@
 #pragma once
 
-#include "fixtk/message.hpp"
+#include "fixtk/decoder.hpp"
 
 #include <boost/bind.hpp>
 #include <boost/asio.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string.hpp>
 
 using boost::asio::ip::tcp;
 
@@ -27,7 +29,7 @@ public:
     template< typename H >
     session_id initiator( const std::string& conn, H handler );
 
-    void send( session_id, const fixtk::field_vector& );
+    void send( session_id, const value&, const field_vector& );
 
     void start();
 

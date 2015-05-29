@@ -1,14 +1,14 @@
 
 function handler( session, request )
-    print( session )
-    print( request )
 end
 
-session = fix.initiator( 'tcp@localhost:14002', handler )
+session = fix.initiator( 'localhost:14002', handler )
 
 request = {
-    [35]='D',
-    [55]='VOD.L'
+    [55]='VOD.L',
+    [128]='XLON'
 }
 
-fix.send( session, request )
+fix.send( session, 'A', request )
+fix.send( session, '0', request )
+fix.send( session, 'D', request )
