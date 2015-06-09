@@ -9,7 +9,7 @@
 
 using boost::asio::ip::tcp;
 
-namespace fixtk {
+namespace fix {
 
 typedef uint64_t session_id;
 
@@ -27,9 +27,9 @@ public:
     void acceptor( const std::string& conn, H handler );
 
     template< typename H >
-    session_id initiator( const std::string& conn, H handler );
+    session_id initiator( const std::string& conn, const header& hdr, H handler );
 
-    void send( session_id, const value&, const field_vector& );
+    void send( session_id, const std::string& type, const message& msg );
 
     void start();
 
@@ -49,6 +49,8 @@ private:
 
     boost::asio::io_service io_;
 };
+
+void set_utc_time( std::string&, time_t* );
 
 #include "fixtk/engine.inl"
 

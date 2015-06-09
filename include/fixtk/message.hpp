@@ -1,64 +1,63 @@
 #pragma once
 
-#include <map>
-#include <vector>
-#include <string>
-#include <sstream>
-#include <iostream>
+#include "fixtk/constants.hpp"
+
+#include <boost/foreach.hpp>
+#include <boost/tokenizer.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string.hpp>
 
 namespace fixtk {
 
 typedef int tag;
 
-typedef std::string value;
-
-struct field
-{
-    field()
-    {
-    }
-
-    field( tag t, const value& v ) :
-        tag_( t ),
-        value_( v )
-    {
-    }
-
-    template< typename T >
-    field( tag t, const T& v ) :
-        tag_( t )
-    {
-        std::stringstream ss;
-        ss << v;
-        value_ = ss.str();
-    }
-
-    tag tag_;
-    value value_;
-};
-
 struct header
 {
-    std::string type_;
     std::string protocol_;
     std::string sender_;
     std::string target_;
-    int sequence_ = 0;
+    int sequence_;
 };
 
-typedef std::vector< field > field_vector;
+class message
+{
+public:
+    template< typename T >
+    void add( tag, T );
 
-typedef std::map< int, std::string > field_map;
+    template< typename H >
+    void parse( H );
 
-typedef std::string message;
+    const std::string& str() const;
 
+private:
+    std::string buf_;
+};
+
+template< typename T >
+void message::add( tag t, T v )
+{
+    std::stringstream ss;
+    ss << t << "=" << v << delim_char;
+    buf_.append( ss.str() );
 }
 
-inline std::ostream& operator<<( std::ostream& out, const fixtk::field_vector& flds )
+template< typename H >
+void message::parse( H handler )
 {
-    for( int i=0; i<flds.size(); i++ ) {
-        out << flds[i].tag_ << "=" << flds[i].value_ << "|";
+    static boost::char_separator<char> field_sep( delim_str );
+    boost::tokenizer< boost::char_separator< char > > fields( buf_, field_sep );
+    BOOST_FOREACH( const std::string& field, fields )
+    {
+        std::vector< std::string > strs;
+        boost::split( strs, field, boost::is_any_of( "=" ) );
+        handler( boost::lexical_cast< tag >( strs[0] ), strs[1] );
     }
+}
 
-    return out;
+const std::string& message::str() const
+{
+    return buf_;
+}
+
 }

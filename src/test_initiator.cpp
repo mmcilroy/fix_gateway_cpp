@@ -8,12 +8,12 @@ int main()
     } );
 
     fix::message request;
-    request[11] = 12345;
-    request[38] = 100;
-    request[40] = 2;
-    request[44] = 100;
-    request[54] = 1;
-    request[55] = "VOD.L";
+    request.add( 11, 12345 );
+    request.add( 38, 100 );
+    request.add( 40, 2 );
+    request.add( 44, 100 );
+    request.add( 54, 1 );
+    request.add( 55, "VOD.L" );
 
     engine.send( session, request );
     engine.start();
