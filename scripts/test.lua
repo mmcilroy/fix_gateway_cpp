@@ -1,17 +1,4 @@
 
-function encode()
-  local request = {
-    { 128, 'exchange' },
-    { 146, '3' },
-    {  55, 'symbol1 '},
-    {  55, 'symbol2 '},
-    {  55, 'symbol3 '}
-  }
-  for k0,v0 in pairs( request ) do
-    print( v0[1] .. ' = ' .. v0[2] )
-  end
-end
-
 local request = {
   { 128, 'exchange' },
   { 146, '3' },
@@ -20,4 +7,6 @@ local request = {
   {  55, 'symbol3' }
 }
 
-fix.test( request )
+for i=1,#request do
+  print( request[i][1] )
+end
