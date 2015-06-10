@@ -1,5 +1,4 @@
-#add_executable( main main.cpp )
-#target_link_libraries( main lua boost_system pthread )
-
-add_executable( test test.cpp )
-
+add_executable( test_message test_message.cpp )
+add_executable( test_acceptor test_acceptor.cpp )
+add_executable( test_lua test_lua.cpp )
+target_link_libraries( test_lua lua5.2 )

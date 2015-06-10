@@ -1,32 +1,18 @@
 
-typedef int tag;
-typedef std::string value;
-struct field { tag tag_; value value_; };
-typedef std::vector< field > field_vector;
-typedef std::map< tag, field* > field_map;
+#include "fix/message.hpp"
 
-class message
+int main()
 {
-public:
-    message()
-    {
-    }
+    fix::message m;
+    m.add( 128, "XLON" );
+    m.add( 146, 3 );
+    m.add( 55, "AAA" );
+    m.add( 55, "BBB" );
+    m.add( 55, "CCC" );
 
-    message( const std::string& )
-    {
-    }
+    std::cout << m.str() << std::endl;
 
-    field& operator[]( t )
-    {
-        field_map::iterator it = index_.find( t )
-        if( it == index_.end() ) {
-            
-        } else {
-            return it.second();
-        }
-    }
-
-private:
-    field_vector fields_;
-    field_map index_;
-};
+    m.parse( []( fix::tag tag, const std::string& val ) {
+        std::cout << tag << "=" << val << std::endl;
+    } );
+}

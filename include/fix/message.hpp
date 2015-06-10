@@ -1,16 +1,17 @@
 #pragma once
 
-#include "fixtk/constants.hpp"
+#include "fix/constants.hpp"
 
-#include <boost/foreach.hpp>
 #include <boost/tokenizer.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 
-namespace fixtk {
+namespace fix {
 
+// ----------------------------------------------------------------------------
 typedef int tag;
 
+// ----------------------------------------------------------------------------
 struct header
 {
     std::string protocol_;
@@ -19,6 +20,7 @@ struct header
     int sequence_;
 };
 
+// ----------------------------------------------------------------------------
 class message
 {
 public:
@@ -26,7 +28,7 @@ public:
     void add( tag, T );
 
     template< typename H >
-    void parse( H );
+    void parse( H ) const;
 
     const std::string& str() const;
 
@@ -34,6 +36,7 @@ private:
     std::string buf_;
 };
 
+// ----------------------------------------------------------------------------
 template< typename T >
 void message::add( tag t, T v )
 {
@@ -43,7 +46,7 @@ void message::add( tag t, T v )
 }
 
 template< typename H >
-void message::parse( H handler )
+void message::parse( H handler ) const
 {
     static boost::char_separator<char> field_sep( delim_str );
     boost::tokenizer< boost::char_separator< char > > fields( buf_, field_sep );

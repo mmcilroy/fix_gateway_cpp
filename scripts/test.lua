@@ -12,4 +12,12 @@ function encode()
   end
 end
 
-encode()
+local request = {
+  { 128, 'exchange' },
+  { 146, '3' },
+  {  55, 'symbol1' },
+  {  55, 'symbol2' },
+  {  55, 'symbol3' }
+}
+
+fix.test( request )
