@@ -24,6 +24,10 @@ struct header
 class message
 {
 public:
+    message();
+
+    message( const std::string& );
+
     template< typename T >
     void add( tag, T );
 
@@ -37,6 +41,15 @@ private:
 };
 
 // ----------------------------------------------------------------------------
+message::message()
+{
+}
+
+message::message( const std::string& buf ) :
+    buf_( buf )
+{
+}
+
 template< typename T >
 void message::add( tag t, T v )
 {
