@@ -1,79 +1,12 @@
 
-#define BEGIN_STRING 8
-#define BODY_LENGTH 9
-#define CHECK_SUM 10
-#define MSG_TYPE 35
-#define MSG_SEQ_NUM 34
-#define SENDING_TIME 52
-#define SENDER_COMP_ID 49
-#define SENDER_SUB_ID 50
-#define TARGET_COMP_ID 56
-#define DELIM (char)1
-
-void set_utc_time( std::string& s, time_t* t )
-{
-    struct tm* utc = gmtime( t );
-
-    char buf[32];
-    sprintf( buf, "%04d%02d%02d-%02d:%02d:%02d",
-        utc->tm_year+1900,
-        utc->tm_mon+1,
-        utc->tm_mday,
-        utc->tm_hour,
-        utc->tm_min,
-        utc->tm_sec );
-
-    s = buf;
-}
-
-void encode( message& out, const header& hdr, const field_vector& flds )
-{
-    std::string send_time;
-    time_t t = time( 0 );
-    set_utc_time( send_time, &t );
-
-    std::stringstream body_str;
-    body_str << MSG_TYPE << "=" << hdr.type_ << DELIM;
-    body_str << MSG_SEQ_NUM << "=" << hdr.sequence_ << DELIM;
-    body_str << SENDER_COMP_ID << "=" << hdr.sender_ << DELIM;
-    body_str << TARGET_COMP_ID << "=" << hdr.target_ << DELIM;
-    body_str << SENDING_TIME << "=" << send_time << DELIM;
-
-    for( int i=0; i<flds.size(); i++ ) {
-        body_str << flds[i].tag_ << "=" << flds[i].value_ << DELIM;
-    }
-
-    int length = body_str.str().length();
-
-    std::stringstream msg_str;
-    msg_str << BEGIN_STRING << "=" << hdr.protocol_ << DELIM;
-    msg_str << BODY_LENGTH << "=" << length << DELIM;
-    msg_str << body_str.str();
-
-    int checksum = 0;
-    std::string s = msg_str.str();
-    for( int i=0; i<s.size(); i++ ) {
-        checksum += (int)s[i];
-    }
-
-    char buf[4];
-    sprintf( buf, "%03d", checksum % 256 );
-
-    msg_str << CHECK_SUM << "=" << buf << DELIM;
-    out = msg_str.str();
-}
-
-
-
-// ----------------------------------------------------------------------------
 const size_t buffer_size = 1024;
 
-class session
+class tcp_session
 {
 public:
-    session( engine&, boost::asio::io_service& );
+    tcp_session( engine&, boost::asio::io_service& );
 
-    ~session();
+    ~tcp_session();
 
     template< typename H >
     void read( H handler );
@@ -85,8 +18,7 @@ public:
 
     tcp::socket socket_;
 
-    session_id id_;
-    header hdr_;
+    session session_;
     decoder decoder_;
 
     char buf_[ buffer_size ];
@@ -95,26 +27,26 @@ public:
 
 
 // ----------------------------------------------------------------------------
-session::session( engine& engine, boost::asio::io_service& io ) :
+tcp_session::tcp_session( engine& engine, boost::asio::io_service& io ) :
     socket_( io ),
-    id_( engine.alloc_id() )
+    session_( engine.alloc_id() )
 {
-    std::cout << this << " new session" << std::endl;
+    std::cout << this << " new tcp_session" << std::endl;
 }
 
-session::~session()
+tcp_session::~tcp_session()
 {
-    std::cout << this << " del session" << std::endl;
+    std::cout << this << " del tcp_session" << std::endl;
 }
 
 template< typename H >
-void session::read( H handler )
+void tcp_session::read( H handler )
 {
-    std::cout << this << " session.read" << std::endl;
+    std::cout << this << " tcp_session.read" << std::endl;
     socket_.async_read_some(
         boost::asio::buffer( buf_, buffer_size ),
         boost::bind(
-            &session::handle_read< H >,
+            &tcp_session::handle_read< H >,
             this,
             handler,
             boost::asio::placeholders::error,
@@ -122,22 +54,14 @@ void session::read( H handler )
 }
 
 template< typename H >
-void session::handle_read( H handler, const boost::system::error_code& err, size_t bytes_transferred )
+void tcp_session::handle_read( H handler, const boost::system::error_code& err, size_t bytes_transferred )
 {
-    std::cout << this << " session.handle_read: " << err.message() << ", " << bytes_transferred << std::endl;
+    std::cout << this << " tcp_session.handle_read: " << err.message() << ", " << bytes_transferred << std::endl;
     if( !err )
     {
-        decoder_.decode( buf_, bytes_transferred, [&]( const std::string& msg ) {
-            parse( msg, [&]( tag t, const value& v ) {
-                if( t == 8 ) {
-                    hdr_.protocol_ = v;
-                } else if( t == 49 ) {
-                    hdr_.target_ = v;
-                } else if( t == 56 ) {
-                    hdr_.sender_ = v;
-                }
-            } );
-            handler( id_, msg );
+        decoder_.decode( buf_, bytes_transferred, [&]( const fix::message& msg ) {
+            session_.recv( msg );
+            handler( session_.id_, msg );
         } );
         read( handler );
     }
@@ -147,11 +71,11 @@ void session::handle_read( H handler, const boost::system::error_code& err, size
     }
 }
 
-void session::send( const message& msg )
+void tcp_session::send( const message& msg )
 {
     boost::asio::write(
         socket_,
-        boost::asio::buffer( msg.c_str(), msg.size() ) );
+        boost::asio::buffer( msg.str(), msg.size() ) );
 }
 
 
@@ -190,7 +114,7 @@ void engine::acceptor( const std::string& conn, H handler )
 }
 
 template< typename H >
-session_id engine::initiator( const std::string& conn, H handler )
+session_id engine::initiator( const std::string& conn, const header&, H handler )
 {
     std::cout << this << " engine.initiator: " << conn << std::endl;
 
@@ -201,31 +125,27 @@ session_id engine::initiator( const std::string& conn, H handler )
     tcp::resolver resolver( io_ );
     tcp::resolver::query query( tcp::v4(), host, port );
     tcp::resolver::iterator it = resolver.resolve( query );
-    session* sess = new session( *this, io_ );
-    sessions_[ sess->id_ ] = sess;
+    tcp_session* sess = new tcp_session( *this, io_ );
+    sessions_[ sess->session_.id_ ] = sess;
     boost::asio::connect( sess->socket_, it );
 
-    header& hdr = sess->hdr_;
+    header& hdr = sess->session_.state_->hdr_;
     hdr.protocol_ = "FIX.4.4";
     hdr.sender_ = "S";
     hdr.target_ = "T";
     sess->read( handler );
 
-    return sess->id_;
+    return sess->session_.id_;
 }
-
-void engine::send( session_id id, const value& type, const field_vector& flds )
+void engine::send( session_id id, const std::string& type, const message& body )
 {
-    std::cout << this << " engine.send: " << id << ", " << flds << std::endl;
+    std::cout << this << " engine.send: " << id << ", " << body << std::endl;
 
     auto it = sessions_.find( id );
     if( it != sessions_.end() )
     {
         message msg;
-        header& hdr = it->second->hdr_;
-        hdr.type_ = type;
-        hdr.sequence_++;
-        encode( msg, hdr, flds );
+        it->second->session_.encode( msg, type, body );
 
         std::cout << "encoded " << msg << std::endl;
 
@@ -255,8 +175,8 @@ template< typename H >
 void engine::start_accept( tcp::acceptor* acc, H handler )
 {
     std::cout << this << " engine.start_accept" << std::endl;
-    session* sess = new session( *this, io_ );
-    sessions_[ sess->id_ ] = sess;
+    tcp_session* sess = new tcp_session( *this, io_ );
+    sessions_[ sess->session_.id_ ] = sess;
     acc->async_accept(
         sess->socket_,
         boost::bind(
@@ -269,7 +189,7 @@ void engine::start_accept( tcp::acceptor* acc, H handler )
 }
 
 template< typename H >
-void engine::handle_accept( tcp::acceptor* acc, session* sess, H handler, const boost::system::error_code& err )
+void engine::handle_accept( tcp::acceptor* acc, tcp_session* sess, H handler, const boost::system::error_code& err )
 {
     std::cout << this << " engine.handle_accept: " << err.message() << std::endl;
     if( !err ) {

@@ -1,4 +1,4 @@
-#include "fix/message.hpp"
+#include "fix/engine.hpp"
 
 extern "C"
 {
@@ -7,7 +7,18 @@ extern "C"
 #include <lualib.h>
 }
 
+#include <mutex>
+#include <thread>
 #include <iostream>
+
+std::thread engine_thread;
+std::recursive_mutex lua_mutex;
+fix::engine engine;
+
+void engine_thread_fn()
+{
+    engine.start();
+}
 
 void l_push_message( lua_State* l, const fix::message& msg )
 {
@@ -51,23 +62,39 @@ void l_pop_message( lua_State* l, fix::message& msg )
 
 int l_acceptor( lua_State* l )
 {
+    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
+
     const char* conn = luaL_checkstring( l, 1 );
     int handler = luaL_ref( l, LUA_REGISTRYINDEX );
 
-    lua_rawgeti( l, LUA_REGISTRYINDEX, handler );
-    lua_pushnumber( l, 1 );
-    l_push_message( l, fix::message( "1=one|2=two|3=three|" ) );
-    lua_pcall( l, 2, 0, 0 );
+    engine.acceptor( conn, [=]( fix::session_id id, const fix::message& msg ) {
+        std::lock_guard< std::recursive_mutex > lock( lua_mutex );
+        lua_rawgeti( l, LUA_REGISTRYINDEX, handler );
+        lua_pushnumber( l, 1 );
+        l_push_message( l, msg );
+        lua_pcall( l, 2, 0, 0 );
+    } );
+
+    if( !engine_thread.joinable() ) {
+        engine_thread = std::thread( engine_thread_fn );
+    }
+
+    return 0;
 }
 
 int l_send( lua_State* l )
 {
+    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
+
+    fix::message msg;
+
     int session = luaL_checknumber( l, 1 );
     const char* type = luaL_checkstring( l, 2 );
-    fix::message msg;
     l_pop_message( l, msg );
 
-    std::cout << "send: " << session << ", " << type << ", " << msg.str() << std::endl;
+    engine.send( session, type, msg );
+
+    return 0;
 }
 
 void l_register( lua_State* l )

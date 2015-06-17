@@ -3,7 +3,7 @@
 
 int main()
 {
-    fix::message m;
+    fix::message m, o;
     m.add( 128, "XLON" );
     m.add( 146, 3 );
     m.add( 55, "AAA" );
@@ -12,5 +12,7 @@ int main()
 
     fix::session s( 1 );
     s.recv( m );
-    s.send( "D", m );
+    s.encode( o, "D", m );
+
+    std::cout << o << std::endl;
 }

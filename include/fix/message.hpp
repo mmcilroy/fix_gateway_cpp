@@ -5,6 +5,7 @@
 #include <boost/tokenizer.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
+#include <iostream>
 
 namespace fix {
 
@@ -17,7 +18,6 @@ struct header
     std::string protocol_;
     std::string sender_;
     std::string target_;
-    int sequence_;
 };
 
 // ----------------------------------------------------------------------------
@@ -28,11 +28,19 @@ public:
 
     message( const std::string& );
 
+    void add( message& );
+
     template< typename T >
     void add( tag, T );
 
     template< typename H >
     void parse( H ) const;
+
+    size_t size() const;
+
+    void clear();
+
+    char operator[]( size_t n ) const;
 
     const std::string& str() const;
 
@@ -41,17 +49,36 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-message::message()
+inline std::ostream& operator<<( std::ostream& out, const header& hdr )
+{
+    out << "protocol=" << hdr.protocol_
+        << ", sender=" << hdr.sender_
+        << ", target=" << hdr.target_;
+    return out;
+}
+
+inline std::ostream& operator<<( std::ostream& out, const message& msg )
+{
+    out << msg.str();
+    return out;
+}
+
+inline message::message()
 {
 }
 
-message::message( const std::string& buf ) :
+inline message::message( const std::string& buf ) :
     buf_( buf )
 {
 }
 
+inline void message::add( message& msg )
+{
+    buf_.append( msg.str() );
+}
+
 template< typename T >
-void message::add( tag t, T v )
+inline void message::add( tag t, T v )
 {
     std::stringstream ss;
     ss << t << "=" << v << delim_char;
@@ -59,7 +86,7 @@ void message::add( tag t, T v )
 }
 
 template< typename H >
-void message::parse( H handler ) const
+inline void message::parse( H handler ) const
 {
     static boost::char_separator<char> field_sep( delim_str );
     boost::tokenizer< boost::char_separator< char > > fields( buf_, field_sep );
@@ -71,9 +98,24 @@ void message::parse( H handler ) const
     }
 }
 
-const std::string& message::str() const
+inline const std::string& message::str() const
 {
     return buf_;
+}
+
+inline size_t message::size() const
+{
+    return buf_.size();
+}
+
+inline void message::clear()
+{
+    buf_.clear();
+}
+
+inline char message::operator[]( size_t n ) const
+{
+    return buf_[n];
 }
 
 }

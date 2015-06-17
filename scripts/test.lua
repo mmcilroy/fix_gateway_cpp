@@ -8,7 +8,8 @@ function val( request, tag )
   return nil
 end
 
-function handler( session, msgtype, request )
+function handler( session, request )
+  local msgtype = val( request, 35 )
   if msgtype == 'A' then
     fix.send( session, 'A', { { 98, '0' }, { 108, '30' } } )
   elseif msgtype == '0' then
@@ -24,7 +25,7 @@ function handler( session, msgtype, request )
   end
 end
 
-fix.acceptor( ':8060', handler2 )
+fix.acceptor( ':8060', handler )
 
 response = {
   {  11, 'clordid' },
@@ -32,5 +33,3 @@ response = {
   {  39, '0' },
   { 150, '0' }
 }
-
---fix.send( 1, 'D', response )

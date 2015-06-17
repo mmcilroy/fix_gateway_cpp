@@ -12,6 +12,8 @@ typedef int sequence;
 // ----------------------------------------------------------------------------
 struct state
 {
+    state();
+
     header hdr_;
     sequence seq_;
 };
@@ -22,53 +24,53 @@ class session
 public:
     session( session_id );
 
-    void send( const std::string& type, const fix::message& body );
+    void encode( fix::message& out, const std::string& type, const fix::message& body );
 
     void recv( const fix::message& body );
 
-private:
+//private:
     session_id id_;
     std::unique_ptr< state > state_;
 };
 
 // ----------------------------------------------------------------------------
+state::state() :
+    seq_( 1 )
+{
+}
+
 session::session( session_id id ) :
     id_( id )
 {
 }
 
-void session::send( const std::string& type, const fix::message& body )
+void session::encode( fix::message& out, const std::string& type, const fix::message& body )
 {
     if( state_ )
     {
         std::string send_time;
         set_utc_time( send_time );
 
-        std::stringstream body_ss;
-        body_ss << msg_type << "=" << type << delim_char;
-        body_ss << msg_seq_num << "=" << state_->hdr_.sequence_ << delim_char;
-        body_ss << sender_comp_id << "=" << state_->hdr_.sender_ << delim_char;
-        body_ss << target_comp_id << "=" << state_->hdr_.target_ << delim_char;
-        body_ss << sending_time << "=" << send_time << delim_char;
-        body_ss << body.str();
+        fix::message hdr;
+        hdr.add( msg_type, type );
+        hdr.add( msg_seq_num, state_->seq_++ );
+        hdr.add( sender_comp_id, state_->hdr_.sender_ );
+        hdr.add( target_comp_id, state_->hdr_.target_ );
+        hdr.add( sending_time, send_time );
 
-        std::stringstream msg_ss;
-        msg_ss << begin_string << "=" << state_->hdr_.protocol_ << delim_char;
-        msg_ss << body_length << "=" << body_ss.str().length() << delim_char;
-        msg_ss << body_ss.str();
+        out.add( begin_string, state_->hdr_.protocol_ );
+        out.add( body_length, hdr.size() );
+        out.add( hdr );
 
         int checksum = 0;
-        std::string s = msg_ss.str();
-        for( int i=0; i<s.size(); i++ ) {
-            checksum += (int)s[i];
+        for( int i=0; i<out.size(); i++ ) {
+            checksum += (int)out[i];
         }
 
         char buf[4];
         sprintf( buf, "%03d", checksum % 256 );
 
-        msg_ss << check_sum << "=" << buf << delim_char;
-
-        std::cout << "send: " << msg_ss.str() << std::endl;
+        out.add( check_sum, buf );
     }
 }
 
