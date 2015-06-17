@@ -4,7 +4,9 @@ const size_t buffer_size = 1024;
 class tcp_session
 {
 public:
-    tcp_session( engine&, boost::asio::io_service& );
+    tcp_session( engine& );
+
+    tcp_session( engine&, const header& );
 
     ~tcp_session();
 
@@ -27,9 +29,16 @@ public:
 
 
 // ----------------------------------------------------------------------------
-tcp_session::tcp_session( engine& engine, boost::asio::io_service& io ) :
-    socket_( io ),
+tcp_session::tcp_session( engine& engine ) :
+    socket_( engine.io_ ),
     session_( engine.alloc_id() )
+{
+    std::cout << this << " new tcp_session" << std::endl;
+}
+
+tcp_session::tcp_session( engine& engine, const header& hdr ) :
+    socket_( engine.io_ ),
+    session_( engine.alloc_id(), hdr )
 {
     std::cout << this << " new tcp_session" << std::endl;
 }
@@ -114,7 +123,7 @@ void engine::acceptor( const std::string& conn, H handler )
 }
 
 template< typename H >
-session_id engine::initiator( const std::string& conn, const header&, H handler )
+session_id engine::initiator( const std::string& conn, const header& hdr, H handler )
 {
     std::cout << this << " engine.initiator: " << conn << std::endl;
 
@@ -125,14 +134,10 @@ session_id engine::initiator( const std::string& conn, const header&, H handler 
     tcp::resolver resolver( io_ );
     tcp::resolver::query query( tcp::v4(), host, port );
     tcp::resolver::iterator it = resolver.resolve( query );
-    tcp_session* sess = new tcp_session( *this, io_ );
+    tcp_session* sess = new tcp_session( *this, hdr );
     sessions_[ sess->session_.id_ ] = sess;
     boost::asio::connect( sess->socket_, it );
 
-    header& hdr = sess->session_.state_->hdr_;
-    hdr.protocol_ = "FIX.4.4";
-    hdr.sender_ = "S";
-    hdr.target_ = "T";
     sess->read( handler );
 
     return sess->session_.id_;
@@ -146,8 +151,6 @@ void engine::send( session_id id, const std::string& type, const message& body )
     {
         message msg;
         it->second->session_.encode( msg, type, body );
-
-        std::cout << "encoded " << msg << std::endl;
 
         io_.dispatch( [ this, id, msg ]()
         {
@@ -175,7 +178,7 @@ template< typename H >
 void engine::start_accept( tcp::acceptor* acc, H handler )
 {
     std::cout << this << " engine.start_accept" << std::endl;
-    tcp_session* sess = new tcp_session( *this, io_ );
+    tcp_session* sess = new tcp_session( *this );
     sessions_[ sess->session_.id_ ] = sess;
     acc->async_accept(
         sess->socket_,

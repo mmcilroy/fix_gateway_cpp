@@ -24,6 +24,8 @@ class session
 public:
     session( session_id );
 
+    session( session_id, const header& );
+
     void encode( fix::message& out, const std::string& type, const fix::message& body );
 
     void recv( const fix::message& body );
@@ -42,6 +44,13 @@ state::state() :
 session::session( session_id id ) :
     id_( id )
 {
+}
+
+session::session( session_id id, const header& hdr ) :
+    id_( id ),
+    state_( new state() )
+{
+    state_->hdr_ = hdr;
 }
 
 void session::encode( fix::message& out, const std::string& type, const fix::message& body )
@@ -71,17 +80,21 @@ void session::encode( fix::message& out, const std::string& type, const fix::mes
         sprintf( buf, "%03d", checksum % 256 );
 
         out.add( check_sum, buf );
+
+        std::cout << "encoded " << out << std::endl;
     }
 }
 
-void session::recv( const fix::message& body )
+void session::recv( const fix::message& msg )
 {
+    std::cout << "received " << msg << std::endl;
+
     if( !state_ )
     {
         state_ = std::move( std::unique_ptr< state >( new state() ) );
 
         // get protocol, sender and target
-        body.parse( [&
+        msg.parse( [&
             ]( fix::tag tag, const std::string& val ) {
             if( tag == 8 ) {
                 state_->hdr_.protocol_ = val;

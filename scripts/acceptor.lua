@@ -1,23 +1,26 @@
 
-function handler( session, request )
-  response = {
-    [  6]='0',
-    [ 11]=request[11],
-    [ 14]='0',
-    [ 17]='12345',
-    [ 37]='12345',
-    [ 39]='0',
-    [ 54]='1',
-    [ 55]=request[55],
-    [150]='0',
-    [151]='100'
-  }
+function val( request, tag )
+  for i=1,#request do
+    if tag == request[i][1] then
+      return request[i][2]
+    end
+  end
+  return nil
+end
 
-  if request[35] == 'A' then
-    fix.send( session, 'A', { [98]='0', [108]='30' } )
-  elseif request[35] == '0' then
+function handler( session, request )
+  local msgtype = val( request, 35 )
+  if msgtype == 'A' then
+    fix.send( session, 'A', { { 98, '0' }, { 108, '30' } } )
+  elseif msgtype == '0' then
     fix.send( session, '0', {} )
-  elseif request[35] == 'D' then
+  elseif msgtype == 'D' then
+    response = {
+      {  11, val( request, 11 ) },
+      {  55, val( request, 55 ) },
+      {  39, '0' },
+      { 150, '0' }
+    }
     fix.send( session, '8', response )
   end
 end

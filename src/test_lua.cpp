@@ -82,6 +82,34 @@ int l_acceptor( lua_State* l )
     return 0;
 }
 
+int l_initiator( lua_State* l )
+{
+    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
+
+    fix::message msg;
+    fix::header hdr;
+    hdr.protocol_ = "FIX.4.4";
+    hdr.sender_ = "SENDER";
+    hdr.target_ = "TARGET";
+
+    const char* conn = luaL_checkstring( l, 1 );
+    //l_pop_message( l, msg );
+
+    fix::session_id id = engine.initiator( conn, hdr, [=]( fix::session_id id, const fix::message& msg ) {
+        msg.parse( [&]( fix::tag t, const std::string& v ) {
+            std::cout << "parsed " << t << "=" << v << std::endl;
+        } );
+    } );
+
+    if( !engine_thread.joinable() ) {
+        engine_thread = std::thread( engine_thread_fn );
+    }
+
+    lua_pushinteger( l, id );
+
+    return 1;
+}
+
 int l_send( lua_State* l )
 {
     std::lock_guard< std::recursive_mutex > lock( lua_mutex );
@@ -101,6 +129,7 @@ void l_register( lua_State* l )
 {
     luaL_Reg fix_reg[] = {
         { "acceptor", l_acceptor },
+        { "initiator", l_initiator },
         { "send", l_send },
         { NULL, NULL }
     };
@@ -120,6 +149,10 @@ int main( int argc, char** argv )
     int err = luaL_dofile( l, argv[1] );
     if( err ) {
         std::cerr << "lua error: " << luaL_checkstring( l, -1 ) << std::endl; return 1;
+    }
+
+    if( engine_thread.joinable() ) {
+        engine_thread.join();
     }
 
     lua_close( l );
