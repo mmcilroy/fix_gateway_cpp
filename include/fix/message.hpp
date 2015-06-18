@@ -28,7 +28,7 @@ public:
 
     message( const std::string& );
 
-    void add( message& );
+    void add( const message& );
 
     template< typename T >
     void add( tag, T );
@@ -72,7 +72,7 @@ inline message::message( const std::string& buf ) :
 {
 }
 
-inline void message::add( message& msg )
+inline void message::add( const message& msg )
 {
     buf_.append( msg.str() );
 }

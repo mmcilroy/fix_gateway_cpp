@@ -1,5 +1,7 @@
 #pragma once
 
+namespace fix {
+
 void set_utc_time( std::string& s )
 {
     time_t t = time( 0 );
@@ -13,4 +15,6 @@ void set_utc_time( std::string& s )
         utc->tm_hour,
         utc->tm_min,
         utc->tm_sec );
+}
+
 }

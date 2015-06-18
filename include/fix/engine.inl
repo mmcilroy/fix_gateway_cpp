@@ -33,14 +33,14 @@ tcp_session::tcp_session( engine& engine ) :
     socket_( engine.io_ ),
     session_( engine.alloc_id() )
 {
-    std::cout << this << " new tcp_session" << std::endl;
+    std::cout << this << " new tcp_session " << session_.id_ << std::endl;
 }
 
 tcp_session::tcp_session( engine& engine, const header& hdr ) :
     socket_( engine.io_ ),
     session_( engine.alloc_id(), hdr )
 {
-    std::cout << this << " new tcp_session" << std::endl;
+    std::cout << this << " new tcp_session " << session_.id_ << std::endl;
 }
 
 tcp_session::~tcp_session()
@@ -82,6 +82,7 @@ void tcp_session::handle_read( H handler, const boost::system::error_code& err, 
 
 void tcp_session::send( const message& msg )
 {
+    std::cout << this << " tcp_session.send" << std::endl;
     boost::asio::write(
         socket_,
         boost::asio::buffer( msg.str(), msg.size() ) );

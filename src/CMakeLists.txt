@@ -1,6 +1,2 @@
-add_executable( test_message test_message.cpp )
-add_executable( test_session test_session.cpp )
-add_executable( test_acceptor test_acceptor.cpp )
-
-add_executable( test_lua test_lua.cpp )
-target_link_libraries( test_lua lua5.2 boost_thread boost_system pthread )
+add_executable( fix_script fix_script.cpp )
+target_link_libraries( fix_script lua5.2 boost_thread boost_system pthread )

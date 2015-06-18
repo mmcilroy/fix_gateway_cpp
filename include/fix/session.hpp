@@ -70,6 +70,7 @@ void session::encode( fix::message& out, const std::string& type, const fix::mes
         out.add( begin_string, state_->hdr_.protocol_ );
         out.add( body_length, hdr.size() );
         out.add( hdr );
+        out.add( body );
 
         int checksum = 0;
         for( int i=0; i<out.size(); i++ ) {
