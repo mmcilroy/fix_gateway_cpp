@@ -1,4 +1,20 @@
 
+function on_init()
+  fix.acceptor( {
+    plugin = 'tcp',
+    host = 'localhost',
+    port = '14002'
+  } )
+end
+
+function on_event( session, request )
+  fix.send( session, response )             -- respond to sender
+  fix.send( fix.session( '', response ) )   -- route to another session
+end
+
+
+
+
 function val( request, tag )
   for i=1,#request do
     if tag == request[i][1] then
