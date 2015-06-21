@@ -2,6 +2,8 @@
 
 #include "event.hpp"
 
+extern void accept( const std::string& );
+
 class native_processor
 {
 public:
@@ -11,6 +13,7 @@ public:
 
     void on_init()
     {
+        accept( ":8080" );
     }
 
     void on_event( const fix::event& )

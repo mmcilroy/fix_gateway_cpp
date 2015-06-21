@@ -2,74 +2,81 @@
 
 #include "event.hpp"
 
-extern "C"
-{
+extern "C" {
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
 }
 
-int l_acceptor( lua_State* l )
+extern fix::session_id connect( const std::string&, const fix::header& );
+extern void accept( const std::string& );
+extern void send( fix::session_id, const std::string&, const fix::message& );
+
+void l_push_message( lua_State* l, const fix::message& msg )
 {
-    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
+    int i=0;
 
-    const char* conn = luaL_checkstring( l, 1 );
-    int handler = luaL_ref( l, LUA_REGISTRYINDEX );
-
-    engine.acceptor( conn, [=]( fix::session_id id, const fix::message& msg ) {
-        std::lock_guard< std::recursive_mutex > lock( lua_mutex );
-        lua_rawgeti( l, LUA_REGISTRYINDEX, handler );
-        lua_pushnumber( l, id );
-        l_push_message( l, msg );
-        lua_pcall( l, 2, 0, 0 );
+    lua_newtable( l );
+    msg.parse( [&]( fix::tag tag, const std::string& val ) {
+        lua_pushinteger( l, ++i );
+        lua_newtable( l );
+        lua_pushinteger( l, 1 );
+        lua_pushinteger( l, tag );
+        lua_settable( l, -3 );
+        lua_pushinteger( l, 2 );
+        lua_pushstring( l, val.c_str() );
+        lua_settable( l, -3 );
+        lua_settable( l, -3 );
     } );
+}
 
-    if( !engine_thread.joinable() ) {
-        engine_thread = std::thread( engine_thread_fn );
+void l_pop_message( lua_State* l, fix::message& msg )
+{
+    int i=0;
+    int tag;
+
+    lua_pushnil( l );
+    while( lua_next( l, -2 ) != 0 )
+    {
+        lua_pushnil( l );
+        while( lua_next( l, -2 ) != 0 )
+        {
+            if( ++i % 2 == 1 ) {
+                tag = (int)lua_tonumber( l, -1 );
+            } else {
+                msg.add( tag, lua_tostring( l, -1 ) );
+            }
+            lua_pop( l, 1 );
+        }
+        lua_pop( l, 1 );
     }
+}
 
+int l_accept( lua_State* l )
+{
+    accept( luaL_checkstring( l, 1 ) );
     return 0;
 }
 
-int l_initiator( lua_State* l )
+int l_connect( lua_State* l )
 {
-    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
-
-    fix::message msg;
     fix::header hdr;
     hdr.protocol_ = "FIX.4.4";
     hdr.sender_ = "SENDER";
     hdr.target_ = "TARGET";
 
-    const char* conn = luaL_checkstring( l, 1 );
-    //l_pop_message( l, msg );
-
-    fix::session_id id = engine.initiator( conn, hdr, [=]( fix::session_id id, const fix::message& msg ) {
-        msg.parse( [&]( fix::tag t, const std::string& v ) {
-            std::cout << "parsed " << t << "=" << v << std::endl;
-        } );
-    } );
-
-    if( !engine_thread.joinable() ) {
-        engine_thread = std::thread( engine_thread_fn );
-    }
-
-    lua_pushinteger( l, id );
+    lua_pushinteger( l, connect( luaL_checkstring( l, 1 ), hdr ) );
 
     return 1;
 }
 
 int l_send( lua_State* l )
 {
-    std::lock_guard< std::recursive_mutex > lock( lua_mutex );
-
     fix::message msg;
-
     int session = luaL_checknumber( l, 1 );
     const char* type = luaL_checkstring( l, 2 );
     l_pop_message( l, msg );
-
-    engine.send( session, type, msg );
+    send( session, type, msg );
 
     return 0;
 }
@@ -77,12 +84,9 @@ int l_send( lua_State* l )
 void l_register( lua_State* l )
 {
     luaL_Reg fix_reg[] = {
-        /*
         { "accept", l_accept },
         { "connect", l_connect },
         { "send", l_send },
-        { "time", l_time },
-        */
         { NULL, NULL }
     };
 
@@ -96,17 +100,16 @@ class lua_processor
 {
 private:
     lua_State* lua_;
-    event_publisher& out_;
+    fix::event_publisher& out_;
 
 public:
-    lua_processor( fix::event_publisher& out ) :
+    lua_processor( const std::string& file, fix::event_publisher& out ) :
         lua_( luaL_newstate() ),
         out_( out )
     {
         luaL_openlibs( lua_ );
         l_register( lua_ );
-
-        int err = luaL_dofile( lua_, argv[1] );
+        int err = luaL_dofile( lua_, file.c_str() );
         if( err ) {
             std::cerr << "lua error: " << luaL_checkstring( lua_, -1 ) << std::endl;
         }
@@ -119,9 +122,15 @@ public:
 
     void on_init()
     {
+        lua_getglobal( lua_, "on_init" );
+        lua_call( lua_, 0, 0 );
     }
 
-    void on_event( const fix::event& )
+    void on_event( const fix::event& ev )
     {
+        lua_getglobal( lua_, "on_event" );
+        lua_pushnumber( lua_, ev.session_ );
+        l_push_message( lua_, ev.message_ );
+        lua_call( lua_, 2, 0 );
     }
 };

@@ -5,15 +5,9 @@
 
 namespace fix {
 
-struct source
-{
-    engine_id engine_;
-    session_id session_;
-};
-
 struct event
 {
-    source source_;
+    session_id session_;
     message message_;
 };
 
