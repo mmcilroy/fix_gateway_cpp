@@ -7,8 +7,8 @@ Prototype of a stateless application designed to route FIX messages between clie
 Direction   | FIX
 ------------|-------------------------
 From client | 35=D 11=12345 55=VOD.L
-To venue    | 35=D 11=1#12345 55=VOD.L
-From venue  | 35=8 11=1#12345 55=VOD.L
+To venue    | 35=D 11=**1#**12345 55=VOD.L
+From venue  | 35=8 11=**1#**12345 55=VOD.L
 To client   | 35=8 11=12345 55=VOD.L
 
 This approach breaks down when no ClOrdID is available - for example business rejects.
