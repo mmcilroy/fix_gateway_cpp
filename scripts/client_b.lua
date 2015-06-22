@@ -1,10 +1,10 @@
 
 function on_init()
   request = {
-    { 11, '12345' },
+    { 11, 'BBBBBBBB' },
     { 55, 'VOD.L' }
   }
-  session = fix.connect( 'localhost:8060' )
+  session = fix.connect( 'localhost:14000' )
   fix.send( session, 'D', request )
 end
 

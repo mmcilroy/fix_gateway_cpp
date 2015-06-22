@@ -1,13 +1,14 @@
+require 'util'
 
 function on_init()
-  fix.accept( ':8060' )
+  fix.accept( ':14001' )
 end
 
 function on_event( session, request )
   fix.send( session, '8', {
-    {  11, '12345' },
+    {  11, val( request, 11 ) },
+    {  55, val( request, 55 ) },
     {  39, '0' },
-    {  55, 'VOD.L' },
     { 150, '0' }
   } )
 end

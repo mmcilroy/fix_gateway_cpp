@@ -1,16 +1,12 @@
 #pragma once
 
-#include "event.hpp"
+#include "fix/app.hpp"
 
 extern "C" {
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
 }
-
-extern fix::session_id connect( const std::string&, const fix::header& );
-extern void accept( const std::string& );
-extern void send( fix::session_id, const std::string&, const fix::message& );
 
 void l_push_message( lua_State* l, const fix::message& msg )
 {
@@ -54,7 +50,7 @@ void l_pop_message( lua_State* l, fix::message& msg )
 
 int l_accept( lua_State* l )
 {
-    accept( luaL_checkstring( l, 1 ) );
+    app::accept( luaL_checkstring( l, 1 ) );
     return 0;
 }
 
@@ -65,7 +61,7 @@ int l_connect( lua_State* l )
     hdr.sender_ = "SENDER";
     hdr.target_ = "TARGET";
 
-    lua_pushinteger( l, connect( luaL_checkstring( l, 1 ), hdr ) );
+    lua_pushinteger( l, app::connect( luaL_checkstring( l, 1 ), hdr ) );
 
     return 1;
 }
@@ -76,7 +72,7 @@ int l_send( lua_State* l )
     int session = luaL_checknumber( l, 1 );
     const char* type = luaL_checkstring( l, 2 );
     l_pop_message( l, msg );
-    send( session, type, msg );
+    app::send( session, type, msg );
 
     return 0;
 }
@@ -96,16 +92,15 @@ void l_register( lua_State* l )
     lua_setglobal( l, "fix" );
 }
 
-class lua_processor
+class lua_processor : public fix::event_processor
 {
 private:
     lua_State* lua_;
-    fix::event_publisher& out_;
 
 public:
     lua_processor( const std::string& file, fix::event_publisher& out ) :
-        lua_( luaL_newstate() ),
-        out_( out )
+        event_processor( out ),
+        lua_( luaL_newstate() )
     {
         luaL_openlibs( lua_ );
         l_register( lua_ );
@@ -115,18 +110,18 @@ public:
         }
     }
 
-    ~lua_processor()
+    virtual ~lua_processor()
     {
         lua_close( lua_ );
     }
 
-    void on_init()
+    virtual void on_init()
     {
         lua_getglobal( lua_, "on_init" );
         lua_call( lua_, 0, 0 );
     }
 
-    void on_event( const fix::event& ev )
+    virtual void on_event( const fix::event& ev )
     {
         lua_getglobal( lua_, "on_event" );
         lua_pushnumber( lua_, ev.session_ );
