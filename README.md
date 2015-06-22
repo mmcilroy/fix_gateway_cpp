@@ -3,8 +3,8 @@
 Prototype of a stateless application designed to route FIX messages between client and venue FIX sessions. The basic idea is to embed data inside the ClOrdID of the message being routed to the venue that can extracted from responses to work out how to route the message back to the client.
 
 **Example**
-            | FIX
---------------------------------------
+Direction   | FIX
+------------|-------------------------
 From client | 35=D|11=12345|55=VOD.L
 To venue    | 35=D|11=1#12345|55=VOD.L
 From venue  | 35=8|11=1#12345|55=VOD.L
